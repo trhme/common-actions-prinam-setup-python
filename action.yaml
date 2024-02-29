@@ -1,0 +1,52 @@
+name: 'Setup Python'
+description: 'Steps to setup python for the build process'
+inputs:
+  python-version:
+    description: Version of Python to use
+    type: number
+    required: false
+    default: 3.9
+  working-dir:
+    description: "."
+  requirements-file:
+    description: "Requirements file to use"
+    default: "requirements.txt"
+  PFG_ARTIFACTORY_USERNAME:
+    description: "Artifactory user"
+    default: ""
+  PFG_ARTIFACTORY_PASSWORD:
+    description: "Artifactory password"
+    default: ""
+runs:
+  using: composite
+  steps:
+
+    - uses: actions/setup-python@v3
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Get pip cache dir
+      shell: bash
+      id: pip-cache
+      run: |
+        echo "::set-output name=dir::$(pip cache dir)"
+
+    - uses: actions/cache@v3
+      id: cache-deps
+      with:
+        path: ${{ env.pythonLocation }}
+        key: ${{ runner.os }}-pip-${{ hashFiles(format('{0}/{1}', inputs.working-dir, inputs.requirements-file)) }}
+        restore-keys: ${{ runner.os }}-pip-
+
+    - name: Add PFG Artifactory as a source
+      if: ${{ inputs.PFG_ARTIFACTORY_USERNAME != '' }}
+      uses: principalinformationservices-emu/common-actions-pip@v0.4.0
+      with:
+        PYTHON_VERSION: ${{ inputs.python-version }}
+        PYPI_USER: ${{ inputs.PFG_ARTIFACTORY_USERNAME }}
+        PYPI_PASSWORD: ${{ inputs.PFG_ARTIFACTORY_PASSWORD }}
+
+    - name: Install Python Deps
+      shell: bash
+      run: pip install -r ${{ inputs.requirements-file }}
+      working-directory: ${{ inputs.working-dir }}
