@@ -1,5 +1,5 @@
-name: 'Setup Python'
-description: 'Steps to setup python for the build process'
+name: 'Setup Python with Dependencies'
+description: 'Steps to setup Python with dependencies for build processes'
 inputs:
   python-version:
     description: Version of Python to use
@@ -7,12 +7,16 @@ inputs:
     required: false
     default: 3.9
   working-dir:
-    description: "."
+    description: Working directory to use, defaults to current directory.
+    default: "."
   requirements-file:
     description: "Requirements file to use"
     default: "requirements.txt"
+  cache-dependency-path:
+    description: Glob path of requirements files relative to working directory, if there is more than one relevant requirements file (e.g. use requirements*.txt if there is both a requirements.txt and a requirements_dev.txt)
+    default: ""
   PFG_ARTIFACTORY_USERNAME:
-    description: "Artifactory user"
+    description: "Artifactory username"
     default: ""
   PFG_ARTIFACTORY_PASSWORD:
     description: "Artifactory password"
@@ -20,33 +24,47 @@ inputs:
 runs:
   using: composite
   steps:
-
-    - uses: actions/setup-python@v3
+    - name: Setup python ${{ inputs.python-version }}
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ inputs.python-version }}
 
-    - name: Get pip cache dir
+    - name: Setup Cache Hash Key Path
+      id: cache-path
       shell: bash
-      id: pip-cache
+      env:
+        INPUT_CACHE_DEPENDENCY_PATH: ${{ inputs.cache-dependency-path }}
+        INPUT_REQUIREMENTS_FILE: ${{ inputs.requirements-file }}
+        INPUT_WORKING_DIR: ${{ inputs.working-dir }}
       run: |
-        echo "::set-output name=dir::$(pip cache dir)"
-
-    - uses: actions/cache@v3
-      id: cache-deps
+        if [[ -z "$INPUT_CACHE_DEPENDENCY_PATH" ]]; then
+          echo "cache-path=$INPUT_WORKING_DIR/$INPUT_REQUIREMENTS_FILE" >> $GITHUB_OUTPUT
+          echo "Using requirements for cache"
+        else
+          echo "cache-path=$INPUT_WORKING_DIR/$INPUT_CACHE_DEPENDENCY_PATH" >> $GITHUB_OUTPUT
+          echo "Using specified glob for cache"
+        fi
+        echo "OS: ${{ inputs.python-version }}"
+    
+    - name: Restore python cache
+      uses: actions/cache@v4
+      id: cache
       with:
-        path: ${{ env.pythonLocation }}
-        key: ${{ runner.os }}-pip-${{ hashFiles(format('{0}/{1}', inputs.working-dir, inputs.requirements-file)) }}
-        restore-keys: ${{ runner.os }}-pip-
-
-    #- name: Add PFG Artifactory as a source
-    #  if: ${{ inputs.PFG_ARTIFACTORY_USERNAME != '' }}
-    #  uses: principalinformationservices-emu/common-actions-pip@v0.4.0
-    #  with:
-    #    PYTHON_VERSION: ${{ inputs.python-version }}
-    #    PYPI_USER: ${{ inputs.PFG_ARTIFACTORY_USERNAME }}
-    #    PYPI_PASSWORD: ${{ inputs.PFG_ARTIFACTORY_PASSWORD }}
+        path: ${{ env.pythonLocation }}/lib/
+        key: ${{ runner.os }}-pip-setup-${{ hashFiles(steps.cache-path.outputs.cache-path) }}
+        
+    - name: Add PFG Artifactory as a source
+      if: ${{ inputs.PFG_ARTIFACTORY_USERNAME != '' }}
+      uses: principalinformationservices-emu/common-actions-pip@v0.6.0
+      with:
+        PYTHON_VERSION: ${{ inputs.python-version }}
+        PYPI_USER: ${{ inputs.PFG_ARTIFACTORY_USERNAME }}
+        PYPI_PASSWORD: ${{ inputs.PFG_ARTIFACTORY_PASSWORD }}
+        SKIP_PYTHON_INSTALL: true
 
     - name: Install Python Deps
       shell: bash
-      run: pip install -r ${{ inputs.requirements-file }}
+      if: steps.cache.outputs.cache-hit != 'true'
+      run: |
+        pip install -r ${{ inputs.requirements-file }}
       working-directory: ${{ inputs.working-dir }}
