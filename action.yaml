@@ -55,7 +55,7 @@ runs:
         
     - name: Add PFG Artifactory as a source
       if: ${{ inputs.PFG_ARTIFACTORY_USERNAME != '' }}
-      uses: common-actions-pip@v0.6.0
+      uses: trhme/common-actions-pip@v0.6.0
       with:
         PYTHON_VERSION: ${{ inputs.python-version }}
         PYPI_USER: ${{ inputs.PFG_ARTIFACTORY_USERNAME }}
